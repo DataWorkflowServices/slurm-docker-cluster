@@ -1,4 +1,4 @@
-FROM rockylinux:8
+FROM rockylinux:8 AS base
 
 LABEL org.opencontainers.image.source="https://github.com/giovtorres/slurm-docker-cluster" \
       org.opencontainers.image.title="slurm-docker-cluster" \
@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.source="https://github.com/giovtorres/slurm-docke
       org.label-schema.docker.cmd="docker-compose up -d" \
       maintainer="Giovanni Torres"
 
-ARG SLURM_TAG=slurm-21-08-6-1
+ARG SLURM_TAG=slurm-22-05-4-1
 ARG GOSU_VERSION=1.11
 
 RUN set -ex \
@@ -15,6 +15,8 @@ RUN set -ex \
     && yum -y install dnf-plugins-core \
     && yum config-manager --set-enabled powertools \
     && yum -y install \
+       lua-devel \
+       cmake \
        wget \
        bzip2 \
        perl \
@@ -34,7 +36,8 @@ RUN set -ex \
        bash-completion \
        vim-enhanced \
     && yum clean all \
-    && rm -rf /var/cache/yum
+    && rm -rf /var/cache/yum \
+    && ln -s  /usr/lib64/pkgconfig/lua.pc /usr/lib64/pkgconfig/lua-5.3.pc
 
 RUN alternatives --set python /usr/bin/python3
 
@@ -51,17 +54,39 @@ RUN set -ex \
     && gosu nobody true
 
 RUN set -x \
+    && git clone --depth 1 --single-branch -b json-c-0.15-20200726 https://github.com/json-c/json-c.git json-c \ 
+    && mkdir json-c-build \
+    && cd json-c-build \
+    && cmake ../json-c \
+    && make \
+    && make install \
+    && cd .. && rm -rf json-c json-c-build \
+    && echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf \
+    && echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf \
+    && ldconfig
+
+FROM base AS configurator
+
+RUN set -x \
     && git clone -b ${SLURM_TAG} --single-branch --depth=1 https://github.com/SchedMD/slurm.git \
     && pushd slurm \
     && ./configure --enable-debug --prefix=/usr --sysconfdir=/etc/slurm \
-        --with-mysql_config=/usr/bin  --libdir=/usr/lib64 \
+        --with-mysql_config=/usr/bin  --libdir=/usr/lib64 --with-json=/usr/local
+
+FROM configurator AS builder
+
+RUN set -x \
+    && pushd slurm \
+    && export PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig/:$PKG_CONFIG_PATH \
     && make install \
     && install -D -m644 etc/cgroup.conf.example /etc/slurm/cgroup.conf.example \
     && install -D -m644 etc/slurm.conf.example /etc/slurm/slurm.conf.example \
     && install -D -m644 etc/slurmdbd.conf.example /etc/slurm/slurmdbd.conf.example \
     && install -D -m644 contribs/slurm_completion_help/slurm_completion.sh /etc/profile.d/slurm_completion.sh \
     && popd \
-    && rm -rf slurm \
+    && rm -rf slurm
+
+RUN set -x \
     && groupadd -r --gid=990 slurm \
     && useradd -r -g slurm --uid=990 slurm \
     && mkdir /etc/sysconfig/slurm \
@@ -70,7 +95,7 @@ RUN set -x \
         /var/run/slurmdbd \
         /var/lib/slurmd \
         /var/log/slurm \
-        /data \
+        /jobs \
     && touch /var/lib/slurmd/node_state \
         /var/lib/slurmd/front_end_state \
         /var/lib/slurmd/job_state \
@@ -80,10 +105,13 @@ RUN set -x \
         /var/lib/slurmd/assoc_usage \
         /var/lib/slurmd/qos_usage \
         /var/lib/slurmd/fed_mgr_state \
-    && chown -R slurm:slurm /var/*/slurm* \
+        /var/log/slurmctld.log \
+    && chown -R slurm:slurm /var/*/slurm* /jobs \
     && /sbin/create-munge-key
 
+COPY cgroup.conf /etc/slurm/cgroup.conf
 COPY slurm.conf /etc/slurm/slurm.conf
+RUN echo "BurstBufferType=burst_buffer/lua" >> /etc/slurm/slurm.conf
 COPY slurmdbd.conf /etc/slurm/slurmdbd.conf
 RUN set -x \
     && chown slurm:slurm /etc/slurm/slurmdbd.conf \
