@@ -107,7 +107,9 @@ RUN set -x \
         /var/lib/slurmd/fed_mgr_state \
         /var/log/slurmctld.log \
     && chown -R slurm:slurm /var/*/slurm* /jobs \
-    && /sbin/create-munge-key
+    && /sbin/create-munge-key \
+    && curl -LO https://dl.k8s.io/release/v1.25.0/bin/linux/amd64/kubectl \
+    && install -o slurm -g slurm -m 0755 kubectl /usr/local/bin/kubectl
 
 COPY cgroup.conf /etc/slurm/cgroup.conf
 COPY slurm.conf /etc/slurm/slurm.conf
