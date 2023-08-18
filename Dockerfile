@@ -9,6 +9,9 @@ LABEL org.opencontainers.image.source="https://github.com/giovtorres/slurm-docke
 ARG SLURM_TAG=slurm-22-05-4-1
 ARG GOSU_VERSION=1.11
 
+RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/Rocky-* && \
+    sed -i 's|#baseurl=|baseurl=|' /etc/yum.repos.d/Rocky-*
+
 RUN set -ex \
     && yum makecache \
     && yum -y update \
@@ -44,13 +47,15 @@ RUN alternatives --set python /usr/bin/python3
 RUN pip3 install Cython nose
 
 RUN set -ex \
-    && wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-amd64" \
-    && wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-amd64.asc" \
-    && export GNUPGHOME="$(mktemp -d)" \
-    && gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4 \
-    && gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
-    && rm -rf "${GNUPGHOME}" /usr/local/bin/gosu.asc \
-    && chmod +x /usr/local/bin/gosu \
+    && wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-amd64"
+#    && wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-amd64.asc"
+
+#RUN export GNUPGHOME="$(mktemp -d)" \
+#    && gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4 \
+#    && gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
+#    && rm -rf "${GNUPGHOME}" /usr/local/bin/gosu.asc
+
+RUN chmod +x /usr/local/bin/gosu \
     && gosu nobody true
 
 RUN set -x \
@@ -108,7 +113,7 @@ RUN set -x \
         /var/log/slurmctld.log \
     && chown -R slurm:slurm /var/*/slurm* /jobs \
     && /sbin/create-munge-key \
-    && curl -LO https://dl.k8s.io/release/v1.25.0/bin/linux/amd64/kubectl \
+    && curl -k -LO "https://dl.k8s.io/release/$(curl -k -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
     && install -o slurm -g slurm -m 0755 kubectl /usr/local/bin/kubectl
 
 COPY cgroup.conf /etc/slurm/cgroup.conf
