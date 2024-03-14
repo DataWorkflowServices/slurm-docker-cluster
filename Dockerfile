@@ -9,6 +9,7 @@ LABEL org.opencontainers.image.source="https://github.com/giovtorres/slurm-docke
 ARG SLURM_TAG=slurm-22-05-4-1
 ARG GOSU_VERSION=1.11
 ARG TARGETARCH
+ARG TARGETOS
 
 RUN sed -i 's/^mirrorlist/#mirrorlist/g' /etc/yum.repos.d/Rocky-* && \
     sed -i 's|^#baseurl=|baseurl=|' /etc/yum.repos.d/Rocky-*
@@ -108,7 +109,7 @@ RUN set -x \
         /var/log/slurmctld.log \
     && chown -R slurm:slurm /var/*/slurm* /jobs \
     && /sbin/create-munge-key \
-    && curl -k -LO "https://dl.k8s.io/release/$(curl -k -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${TARGETARCH}/kubectl" \
+    && curl -k -LO "https://dl.k8s.io/release/$(curl -k -L -s https://dl.k8s.io/release/stable.txt)/bin/${TARGETOS}/${TARGETARCH}/kubectl" \
     && install -o slurm -g slurm -m 0755 kubectl /usr/local/bin/kubectl
 
 COPY cgroup.conf /etc/slurm/cgroup.conf
